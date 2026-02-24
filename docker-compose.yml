@@ -1,0 +1,128 @@
+services:
+  db:
+    container_name: postgres_container
+    image: postgres:16
+    ports:
+      - "5001:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password123
+      POSTGRES_DB: MYDB
+      TZ: Asia/Bangkok
+    volumes:
+      - ./postgres/data:/var/lib/postgresql/data
+      # ต้องเป็น "ไฟล์" เท่านั้น
+      - ./postgres/airflow_init.sql:/docker-entrypoint-initdb.d/airflow_init.sql
+    networks:
+      - my-networks
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d MYDB"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  nifi:
+    image: apache/nifi:1.24.0
+    container_name: nifi
+    hostname: nifi
+    restart: unless-stopped
+    ports:
+      - "8443:8443"
+    environment:
+      NIFI_WEB_HTTPS_PORT: "8443"
+      NIFI_SENSITIVE_PROPS_KEY: admin_password
+      TZ: Asia/Bangkok
+      SINGLE_USER_CREDENTIALS_USERNAME: admin
+      SINGLE_USER_CREDENTIALS_PASSWORD: admin_password
+    volumes:
+      # แนะนำแยก dropzone/archive/error ชัด ๆ (จะทำ flow ง่าย)
+      - ./data/dropzone:/opt/nifi/dropzone
+      - ./data/archive:/opt/nifi/archive
+      - ./data/error:/opt/nifi/error
+
+      # JDBC Driver
+      - ./jdbc/postgresql-42.7.3.jar:/opt/nifi/nifi-current/lib/postgresql-42.7.3.jar
+
+      # persist state (ไม่งั้น restart แล้ว flow หาย/ state reset)
+      - ./nifi/state:/opt/nifi/nifi-current/state
+      - ./nifi/conf:/opt/nifi/nifi-current/conf
+      - ./nifi/content_repository:/opt/nifi/nifi-current/content_repository
+      - ./nifi/database_repository:/opt/nifi/nifi-current/database_repository
+      - ./nifi/flowfile_repository:/opt/nifi/nifi-current/flowfile_repository
+      - ./nifi/provenance_repository:/opt/nifi/nifi-current/provenance_repository
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - my-networks
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: lab_pgadmin_secure
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: test@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      TZ: Asia/Bangkok
+    ports:
+      - "5050:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - my-networks
+
+  af:
+    container_name: airflow_container
+    image: apache/airflow:2.9.3
+    ports:
+      - "8001:8080"
+    environment:
+      TZ: Asia/Bangkok
+
+      # ✅ key ที่ถูก (Airflow 2.x)
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@db:5432/airflow_db
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+
+      # ✅ ส่งค่าให้ DAG ใช้ (DB หลักที่ทำ raw/stg/dm)
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: MYDB
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password123
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./sql:/opt/airflow/sql
+      - ./data:/opt/airflow/data
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - my-networks
+    command: >
+      bash -c "airflow db migrate && airflow standalone"
+
+  flask_app:
+    build: ./flask_app
+    container_name: lab_flask_app
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: MYDB
+      DB_USER: postgres
+      DB_PASSWORD: password123
+      TZ: Asia/Bangkok
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - my-networks
+
+networks:
+  my-networks:
+    driver: bridge

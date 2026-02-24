@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Olist Executive Dashboard</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    :root{
+      --bg:#f6f8fb;
+      --card:#ffffff;
+      --border:#e6e9ef;
+      --muted:#666;
+      --shadow: 0 3px 12px rgba(0,0,0,0.05);
+      --radius: 14px;
+      --green:#00a86b;
+      --red:#e53935;
+      --blue:#2b6cb0;
+    }
+
+    body{
+      font-family: 'Segoe UI', sans-serif;
+      margin: 24px;
+      background: var(--bg);
+    }
+
+    h1{ margin:0 0 5px }
+    h3{ margin:0 0 10px }
+
+    .topbar{
+      display:flex;
+      justify-content:space-between;
+      flex-wrap:wrap;
+      margin-bottom:20px;
+    }
+
+    .control{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      background:white;
+      padding:12px 16px;
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+    }
+
+    select,input{
+      padding:6px 10px;
+      border:1px solid var(--border);
+      border-radius:8px;
+    }
+
+    button{
+      padding:7px 12px;
+      border:none;
+      border-radius:8px;
+      cursor:pointer;
+      background:var(--blue);
+      color:white;
+    }
+
+    button:hover{ opacity:.85 }
+
+    .grid{
+      display:grid;
+      grid-template-columns:repeat(12,1fr);
+      gap:16px;
+    }
+
+    .card{
+      background:var(--card);
+      padding:16px;
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+    }
+
+    .span-3{grid-column:span 3;}
+    .span-6{grid-column:span 6;}
+    .span-12{grid-column:span 12;}
+
+    .kpi{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+    }
+
+    .kpi .label{ font-size:13px; color:var(--muted) }
+    .kpi .value{ font-size:22px; font-weight:700 }
+
+    canvas{ max-height:320px }
+
+    table{
+      width:100%;
+      border-collapse:collapse;
+      font-size:13px;
+    }
+
+    th,td{
+      padding:8px;
+      border-bottom:1px solid var(--border);
+    }
+
+    th{ background:#f2f4f8 }
+
+  </style>
+</head>
+
+<body>
+
+<div class="topbar">
+  <div>
+    <h1>Olist Executive Dashboard</h1>
+    <div style="color:#777">GMV • Logistics • Service Quality</div>
+  </div>
+
+  <div class="control">
+    <label>From</label><input id="fromDate" type="date"/>
+    <label>To</label><input id="toDate" type="date"/>
+    <label>State</label>
+    <select id="state"><option value="">All</option></select>
+    <button onclick="loadDashboard()">Apply</button>
+  </div>
+</div>
+
+<!-- KPI Section -->
+<div class="grid" style="margin-bottom:20px">
+  <div class="card span-3 kpi">
+    <div class="label">GMV</div>
+    <div class="value" id="kpiGmv">-</div>
+  </div>
+
+  <div class="card span-3 kpi">
+    <div class="label">Orders</div>
+    <div class="value" id="kpiOrders">-</div>
+  </div>
+
+  <div class="card span-3 kpi">
+    <div class="label">Avg Delivery Delay (days)</div>
+    <div class="value" id="kpiDelay">-</div>
+  </div>
+
+  <div class="card span-3 kpi">
+    <div class="label">On-time Rate</div>
+    <div class="value" id="kpiOntime">-</div>
+  </div>
+</div>
+
+<!-- Charts -->
+<div class="grid">
+
+  <div class="card span-6">
+    <h3>GMV Trend</h3>
+    <canvas id="gmvChart"></canvas>
+  </div>
+
+  <div class="card span-6">
+    <h3>Orders Trend</h3>
+    <canvas id="ordersChart"></canvas>
+  </div>
+
+  <div class="card span-6">
+    <h3>Delivery Performance</h3>
+    <canvas id="slaChart"></canvas>
+  </div>
+
+  <div class="card span-6">
+    <h3>Review vs Delay</h3>
+    <canvas id="reviewChart"></canvas>
+  </div>
+
+  <div class="card span-12">
+    <h3>Worst States (Late Delivery)</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>State</th>
+          <th>Avg Delay</th>
+          <th>On-time Rate</th>
+        </tr>
+      </thead>
+      <tbody id="stateTable">
+        <tr><td colspan="3">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+
+<script>
+
+let gmvChart, ordersChart, slaChart, reviewChart;
+
+function formatMoney(x){
+  return new Intl.NumberFormat("en-US").format(x);
+}
+
+function formatPct(x){
+  return (x*100).toFixed(1)+"%";
+}
+
+function getQuery(){
+  const from = fromDate.value;
+  const to = toDate.value;
+  const state = stateSelect.value;
+
+  let q = [];
+  if(from) q.push("from="+from);
+  if(to) q.push("to="+to);
+  if(state) q.push("state="+state);
+
+  return q.length ? "?"+q.join("&") : "";
+}
+
+async function loadStates(){
+  const res = await fetch("/api/states");
+  const data = await res.json();
+  stateSelect.innerHTML = '<option value="">All</option>';
+  data.forEach(s=>{
+    stateSelect.innerHTML += `<option value="${s}">${s}</option>`;
+  });
+}
+
+async function loadDashboard(){
+
+  const q = getQuery();
+
+  // KPI
+  const kpi = await fetch("/api/kpi_summary"+q).then(r=>r.json());
+
+  kpiGmv.innerText = formatMoney(kpi.gmv);
+  kpiOrders.innerText = formatMoney(kpi.orders);
+  kpiDelay.innerText = kpi.avg_delay_days.toFixed(2);
+  kpiOntime.innerText = formatPct(kpi.on_time_rate);
+
+  // GMV Trend
+  const gmv = await fetch("/api/gmv_trend_monthly"+q).then(r=>r.json());
+  if(gmvChart) gmvChart.destroy();
+  gmvChart = new Chart(gmvChartCanvas, {
+    type:"line",
+    data:{
+      labels:gmv.map(x=>x.period),
+      datasets:[{label:"GMV",data:gmv.map(x=>x.gmv)}]
+    }
+  });
+
+  // Orders Trend
+  const ord = await fetch("/api/orders_trend_monthly"+q).then(r=>r.json());
+  if(ordersChart) ordersChart.destroy();
+  ordersChart = new Chart(ordersChartCanvas,{
+    type:"line",
+    data:{
+      labels:ord.map(x=>x.period),
+      datasets:[{label:"Orders",data:ord.map(x=>x.orders)}]
+    }
+  });
+
+  // SLA
+  const sla = await fetch("/api/delivery_performance"+q).then(r=>r.json());
+  if(slaChart) slaChart.destroy();
+  slaChart = new Chart(slaChartCanvas,{
+    type:"bar",
+    data:{
+      labels:sla.map(x=>x.period),
+      datasets:[
+        {label:"On-time",data:sla.map(x=>x.on_time_rate)},
+        {label:"Delay",data:sla.map(x=>x.avg_delay_days)}
+      ]
+    }
+  });
+
+  // Review vs Delay
+  const rev = await fetch("/api/review_vs_delay"+q).then(r=>r.json());
+  if(reviewChart) reviewChart.destroy();
+  reviewChart = new Chart(reviewChartCanvas,{
+    type:"bar",
+    data:{
+      labels:rev.map(x=>x.delay_bucket),
+      datasets:[{label:"Avg Review",data:rev.map(x=>x.avg_review)}]
+    }
+  });
+
+  // Worst states
+  const states = await fetch("/api/worst_states").then(r=>r.json());
+  stateTable.innerHTML="";
+  states.forEach(s=>{
+    stateTable.innerHTML += `
+      <tr>
+        <td>${s.state}</td>
+        <td>${s.avg_delay_days.toFixed(2)}</td>
+        <td>${formatPct(s.on_time_rate)}</td>
+      </tr>
+    `;
+  });
+}
+
+const stateSelect = document.getElementById("state");
+const gmvChartCanvas = document.getElementById("gmvChart");
+const ordersChartCanvas = document.getElementById("ordersChart");
+const slaChartCanvas = document.getElementById("slaChart");
+const reviewChartCanvas = document.getElementById("reviewChart");
+
+loadStates();
+loadDashboard();
+
+</script>
+
+</body>
+</html>
