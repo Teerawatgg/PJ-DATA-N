@@ -1,4 +1,6 @@
--- 01_create_schemas.sql
+-- ---------------------------------------------------------
+-- 00) SCHEMAS
+-- ---------------------------------------------------------
 CREATE SCHEMA IF NOT EXISTS raw;
 CREATE SCHEMA IF NOT EXISTS stg;
 CREATE SCHEMA IF NOT EXISTS dm;

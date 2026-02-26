@@ -1,63 +1,60 @@
--- 30_load_fact_tables.sql
--- Build fact at order_item grain with joins to orders/payments/reviews
+-- ---------------------------------------------------------
+-- 06) LOAD FACT
+-- ---------------------------------------------------------
+TRUNCATE TABLE dm.fact_sales;
 
-TRUNCATE dm.fact_order_items;
-
-WITH payments AS (
-  SELECT
-    order_id,
-    SUM(payment_value) AS payment_value
-  FROM raw.order_payments
-  GROUP BY order_id
+WITH pay_one AS (
+  -- เลือก payment ต่อ order (ถ้ามีหลายแถว เอา sequential มากสุด)
+  SELECT DISTINCT ON (order_id)
+    order_id, payment_type, payment_installments, payment_value
+  FROM stg.order_payments
+  ORDER BY order_id, payment_sequential DESC
 ),
-reviews AS (
-  SELECT
-    order_id,
-    MAX(review_score) AS review_score
-  FROM raw.order_reviews
-  GROUP BY order_id
+rev_one AS (
+  -- เลือก review ต่อ order (เอา answer ล่าสุด)
+  SELECT DISTINCT ON (order_id)
+    order_id, review_score
+  FROM stg.order_reviews
+  ORDER BY order_id, review_answer_timestamp DESC NULLS LAST
 )
-INSERT INTO dm.fact_order_items (
+INSERT INTO dm.fact_sales (
   order_id, order_item_id,
-  customer_id, seller_id, product_id,
-  order_status,
-  purchase_ts, approved_ts, delivered_carrier_ts, delivered_customer_ts, estimated_delivery_ts,
-  shipping_limit_ts,
-  price, freight_value,
-  payment_value,
-  review_score,
-  delivery_days,
-  is_late_delivery
+  order_date_id, customer_sk, seller_sk, product_sk,
+  order_status_sk, payment_type_sk,
+  item_price, freight_value, payment_value, payment_installments, review_score,
+  order_purchase_ts, delivered_customer_ts, estimated_delivery_ts
 )
 SELECT
-  oi.order_id,
-  oi.order_item_id,
-  o.customer_id,
-  oi.seller_id,
-  oi.product_id,
-  o.order_status,
+  i.order_id,
+  i.order_item_id,
+
+  (EXTRACT(YEAR FROM o.order_purchase_timestamp)::int * 10000
+   + EXTRACT(MONTH FROM o.order_purchase_timestamp)::int * 100
+   + EXTRACT(DAY FROM o.order_purchase_timestamp)::int) AS order_date_id,
+
+  dc.customer_sk,
+  ds.seller_sk,
+  dp.product_sk,
+
+  dos.order_status_sk,
+  dpt.payment_type_sk,
+
+  i.price,
+  i.freight_value,
+  pay.payment_value,
+  pay.payment_installments,
+  rev.review_score,
+
   o.order_purchase_timestamp,
-  o.order_approved_at,
-  o.order_delivered_carrier_date,
   o.order_delivered_customer_date,
-  o.order_estimated_delivery_date,
-  oi.shipping_limit_date,
-  oi.price,
-  oi.freight_value,
-  p.payment_value,
-  r.review_score,
-  CASE
-    WHEN o.order_delivered_customer_date IS NULL OR o.order_purchase_timestamp IS NULL THEN NULL
-    ELSE (o.order_delivered_customer_date::date - o.order_purchase_timestamp::date)
-  END AS delivery_days,
-  CASE
-    WHEN o.order_delivered_customer_date IS NULL OR o.order_estimated_delivery_date IS NULL THEN NULL
-    ELSE (o.order_delivered_customer_date::date > o.order_estimated_delivery_date::date)
-  END AS is_late_delivery
-FROM raw.order_items oi
-JOIN raw.orders o
-  ON oi.order_id = o.order_id
-LEFT JOIN payments p
-  ON oi.order_id = p.order_id
-LEFT JOIN reviews r
-  ON oi.order_id = r.order_id;
+  o.order_estimated_delivery_date
+FROM stg.order_items i
+JOIN stg.orders o ON o.order_id = i.order_id
+JOIN dm.dim_customer dc ON dc.customer_id = o.customer_id
+JOIN dm.dim_seller   ds ON ds.seller_id = i.seller_id
+JOIN dm.dim_product  dp ON dp.product_id = i.product_id
+LEFT JOIN dm.dim_order_status dos ON dos.order_status = o.order_status
+LEFT JOIN pay_one pay ON pay.order_id = i.order_id
+LEFT JOIN dm.dim_payment_type dpt ON dpt.payment_type = pay.payment_type
+LEFT JOIN rev_one rev ON rev.order_id = i.order_id
+WHERE o.order_purchase_timestamp IS NOT NULL;

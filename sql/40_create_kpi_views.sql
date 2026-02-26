@@ -1,50 +1,67 @@
--- 40_create_kpi_views.sql
--- Views for dashboard / API
+-- ---------------------------------------------------------
+-- 07) KPI VIEWS (Dashboard Query ที่ Flask เรียก)
+-- ---------------------------------------------------------
 
--- 1) Monthly GMV (ยอดขายรวมต่อเดือน)
-CREATE OR REPLACE VIEW dm.v_monthly_gmv AS
+-- 7.1 Monthly GMV / Orders / Avg Review
+CREATE OR REPLACE VIEW dm.v_kpi_monthly AS
 SELECT
-  DATE_TRUNC('month', purchase_ts)::date AS month,
-  SUM(price + COALESCE(freight_value,0)) AS gmv,
-  COUNT(DISTINCT order_id) AS orders
-FROM dm.fact_order_items
-WHERE purchase_ts IS NOT NULL
-GROUP BY 1
-ORDER BY 1;
+  d.year,
+  d.month,
+  COUNT(DISTINCT f.order_id) AS orders,
+  SUM(COALESCE(f.item_price,0) + COALESCE(f.freight_value,0)) AS gmv,
+  AVG(f.review_score)::numeric(10,2) AS avg_review
+FROM dm.fact_sales f
+JOIN dm.dim_date d ON d.date_id = f.order_date_id
+GROUP BY d.year, d.month
+ORDER BY d.year, d.month;
 
--- 2) Top products by GMV (ใช้ category ภาษาอังกฤษถ้ามี)
-CREATE OR REPLACE VIEW dm.v_top_products AS
-SELECT
-  p.product_category_name_english AS category_en,
-  p.product_category_name AS category,
-  SUM(f.price + COALESCE(f.freight_value,0)) AS gmv,
-  COUNT(*) AS items
-FROM dm.fact_order_items f
-JOIN dm.dim_product p
-  ON f.product_id = p.product_id
-GROUP BY 1,2
-ORDER BY gmv DESC;
-
--- 3) Delivery performance by customer state
-CREATE OR REPLACE VIEW dm.v_delivery_by_state AS
+-- 7.2 Sales by Customer State
+CREATE OR REPLACE VIEW dm.v_kpi_sales_by_state AS
 SELECT
   c.customer_state,
-  AVG(f.delivery_days) AS avg_delivery_days,
-  AVG(CASE WHEN f.is_late_delivery THEN 1 ELSE 0 END) AS late_rate,
-  COUNT(*) AS items
-FROM dm.fact_order_items f
-JOIN dm.dim_customer c
-  ON f.customer_id = c.customer_id
-WHERE f.delivery_days IS NOT NULL
-GROUP BY 1
-ORDER BY avg_delivery_days DESC;
+  COUNT(DISTINCT f.order_id) AS orders,
+  SUM(COALESCE(f.item_price,0) + COALESCE(f.freight_value,0)) AS gmv
+FROM dm.fact_sales f
+JOIN dm.dim_customer c ON c.customer_sk = f.customer_sk
+GROUP BY c.customer_state
+ORDER BY gmv DESC;
 
--- 4) Review score distribution
-CREATE OR REPLACE VIEW dm.v_review_distribution AS
+-- 7.3 Top Categories
+CREATE OR REPLACE VIEW dm.v_kpi_top_categories AS
 SELECT
-  review_score,
-  COUNT(*) AS cnt
-FROM dm.fact_order_items
-WHERE review_score IS NOT NULL
+  COALESCE(p.category_english, p.category_name, 'unknown') AS category,
+  COUNT(*) AS items_sold,
+  SUM(COALESCE(f.item_price,0)) AS revenue_items
+FROM dm.fact_sales f
+JOIN dm.dim_product p ON p.product_sk = f.product_sk
 GROUP BY 1
-ORDER BY 1;
+ORDER BY revenue_items DESC;
+
+-- 7.4 Delivery SLA: avg days late (negative = early)
+CREATE OR REPLACE VIEW dm.v_kpi_sla AS
+SELECT
+  d.year,
+  d.month,
+  COUNT(DISTINCT f.order_id) AS delivered_orders,
+  AVG(
+    CASE
+      WHEN f.delivered_customer_ts IS NULL OR f.estimated_delivery_ts IS NULL THEN NULL
+      ELSE (f.delivered_customer_ts::date - f.estimated_delivery_ts::date)
+    END
+  )::numeric(10,2) AS avg_days_late
+FROM dm.fact_sales f
+JOIN dm.dim_date d ON d.date_id = f.order_date_id
+WHERE f.delivered_customer_ts IS NOT NULL
+GROUP BY d.year, d.month
+ORDER BY d.year, d.month;
+
+-- 7.5 Payment Mix
+CREATE OR REPLACE VIEW dm.v_kpi_payment_mix AS
+SELECT
+  pt.payment_type,
+  COUNT(DISTINCT f.order_id) AS orders,
+  SUM(COALESCE(f.payment_value,0)) AS total_paid
+FROM dm.fact_sales f
+LEFT JOIN dm.dim_payment_type pt ON pt.payment_type_sk = f.payment_type_sk
+GROUP BY pt.payment_type
+ORDER BY total_paid DESC;
