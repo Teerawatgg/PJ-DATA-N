@@ -3,285 +3,208 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Olist E-Commerce Dashboard</title>
+  <title>OLIST STORE | Sales Overview</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-  <style>
-    :root{
-      --bg: linear-gradient(135deg, #0f172a, #1f2937);
-      --card: rgba(255,255,255,0.96);
-      --muted: #6b7280;
-      --shadow: 0 16px 34px rgba(0,0,0,0.35);
-      --radius: 18px;
-    }
-    *{ box-sizing:border-box; }
-    body{
-      margin:0; padding:24px;
-      font-family: Arial, sans-serif;
-      background: var(--bg);
-      min-height:100vh;
-    }
-    .container{ max-width:1200px; margin:0 auto; }
-    .header{
-      background: rgba(255,255,255,0.10);
-      color:#f9fafb;
-      padding:18px 20px;
-      border-radius: 22px;
-      box-shadow: var(--shadow);
-      display:flex; align-items:center; justify-content:space-between;
-      gap:12px; flex-wrap:wrap;
-      margin-bottom:18px;
-    }
-    .header h1{ margin:0; font-size:20px; }
-    .subtitle{ margin:0; opacity:0.9; font-size:12px; }
-    .grid{
-      display:grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap:14px;
-      margin-bottom:14px;
-    }
-    .card{
-      background: var(--card);
-      border-radius: var(--radius);
-      padding:16px 18px;
-      box-shadow: 0 10px 26px rgba(15,23,42,0.35);
-    }
-    .label{ color: var(--muted); font-size:12px; }
-    .value{ font-size:24px; font-weight:800; margin-top:6px; }
-    .section{
-      display:grid;
-      grid-template-columns: 1fr 1fr;
-      gap:14px;
-      margin-top:12px;
-    }
-    .panel{
-      background: var(--card);
-      border-radius: var(--radius);
-      padding:16px 18px;
-      box-shadow: 0 10px 26px rgba(15,23,42,0.35);
-    }
-    .panel.full{ grid-column: 1 / -1; }
-    .panel h2{ margin:0 0 8px; font-size:16px; }
-    .panel p{ margin:0 0 12px; color: var(--muted); font-size:12px; }
-    .chart-wrap{ height:320px; }
-    canvas{ width:100% !important; height:100% !important; }
-
-    table{ width:100%; border-collapse:collapse; font-size:13px; margin-top:10px; }
-    th,td{ padding:10px; border-bottom:1px solid #e5e7eb; text-align:left; }
-    th{ background:#f3f4f6; }
-    .pill{ padding:4px 10px; border-radius:999px; background:rgba(59,130,246,0.12); color:#1d4ed8; font-weight:700; font-size:12px; }
-
-    @media (max-width: 980px){
-      .grid{ grid-template-columns: 1fr; }
-      .section{ grid-template-columns: 1fr; }
-    }
-  </style>
+  <link rel="stylesheet" href="styles.css">
 </head>
 
 <body>
-<div class="container">
-  <div class="header">
-    <div>
-      <h1>🛒 Olist E-Commerce Dashboard</h1>
-      <p class="subtitle">Source: dm.v_kpi_* (Star Schema) → For Advanced SQL & Web Dashboard</p>
+  <div class="wrap">
+    <div class="toast" id="toast"></div>
+
+    <div class="top">
+      <div class="brand">
+        <div class="t1">OLIST STORE</div>
+        <div class="t2">Sales Overview</div>
+      </div>
+
+      <div class="kpis">
+        <div class="kpi">
+          <div class="icon">🛒</div>
+          <div>
+            <div class="label">Orders</div>
+            <div class="value" id="kpiOrders">-</div>
+            <div class="unit">orders</div>
+          </div>
+        </div>
+
+        <div class="kpi">
+          <div class="icon">💰</div>
+          <div>
+            <div class="label">Transaction Value</div>
+            <div class="value" id="kpiGMV">-</div>
+            <div class="unit">R$ (BRL)</div>
+          </div>
+        </div>
+
+        <div class="kpi">
+          <div class="icon">👥</div>
+          <div>
+            <div class="label">Unique Customers</div>
+            <div class="value" id="kpiCustomers">-</div>
+            <div class="unit">customers</div>
+          </div>
+        </div>
+
+        <div class="kpi">
+          <div class="icon">⭐</div>
+          <div>
+            <div class="label">Average Review Score</div>
+            <div class="value" id="kpiReview">-</div>
+            <div class="unit">score (1–5)</div>
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="subtitle">Flask + Postgres + Chart.js</div>
+
+    <div class="grid">
+
+      <div class="leftCol">
+        <div class="card">
+          <div class="card-h">
+            <div>
+              <h3>Sales Trend</h3>
+              <p class="sub">Orders & Transaction Value</p>
+            </div>
+            <div class="toggle">
+              <button id="btnDay" class="active" type="button">Day</button>
+              <button id="btnHour" type="button">Hour</button>
+            </div>
+          </div>
+          <div class="card-b">
+            <div class="chartbox"><canvas id="trendChart"></canvas></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h">
+            <div>
+              <h3>Transaction Value</h3>
+              <p class="sub">GMV by Year (R$)</p>
+            </div>
+          </div>
+          <div class="card-b">
+            <div class="chartbox xs"><canvas id="txYearChart"></canvas></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h">
+            <div>
+              <h3>Operational Insights</h3>
+              <p class="sub">Hour of Day & Payment Mix</p>
+            </div>
+          </div>
+
+          <div class="card-b">
+            <div class="inline2">
+              <div class="insBlock">
+                <p class="insTitle">Orders & Revenue by Hour of Day</p>
+                <div class="hHOUR_L"><canvas id="hourChart"></canvas></div>
+              </div>
+
+              <div class="insBlock">
+                <p class="insTitle">Payment Type</p>
+                <div class="hPAY_L"><canvas id="payChart"></canvas></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="rightCol">
+        <div class="card">
+          <div class="card-h">
+            <div>
+              <h3>Best Selling Category by Orders</h3>
+              <p class="sub">Top categories (orders)</p>
+            </div>
+          </div>
+          <div class="card-b">
+            <div class="chartbox sm"><canvas id="catChart"></canvas></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h">
+            <div>
+              <h3>Key Insights</h3>
+              <p class="sub">Orders & Revenue</p>
+            </div>
+          </div>
+
+          <div class="card-b">
+            <div class="insStack">
+              <div class="insBlock">
+                <p class="insTitle">Orders & Revenue by Day of Week</p>
+                <div class="hDOW"><canvas id="dowChart"></canvas></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h">
+            <div>
+              <h3>State by Key Metrics</h3>
+              <p class="sub">Top states (Orders, Revenue, AOV)</p>
+            </div>
+          </div>
+
+          <div class="card-b">
+            <div class="tableScrollSmall">
+              <table class="stateTable">
+                <thead>
+                  <tr>
+                    <th>State</th>
+                    <th class="num">Orders</th>
+                    <th class="num">Revenue (R$)</th>
+                    <th class="num">AOV (R$)</th>
+                  </tr>
+                </thead>
+                <tbody id="stateTbody"></tbody>
+                <tfoot>
+                  <tr id="stateTfoot"></tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="bottomSection">
+      <div class="fullCard">
+        <h3>Product Category by Key Metrics</h3>
+        <div class="tableScroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Category</th>
+                <th class="num">Orders</th>
+                <th class="num">Revenue (R$)</th>
+                <th class="num">AOV (R$)</th>
+                <th class="num">Avg Basket</th>
+                <th class="num">Cancel Rate</th>
+              </tr>
+            </thead>
+            <tbody id="catTbody"></tbody>
+            <tfoot>
+              <tr id="catTfoot"></tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <p class="note">
+          * Avg Basket = จำนวนรายการเฉลี่ยต่อออเดอร์<br/>
+          * Cancel Rate = canceled_orders / total_orders (ถ้าไม่มีสถานะออเดอร์จะแสดง “—”)
+        </p>
+      </div>
+    </div>
+
   </div>
 
-  <!-- Summary cards -->
-  <div class="grid">
-    <div class="card">
-      <div class="label">Total Orders</div>
-      <div class="value">{{ "{:,}".format(summary.total_orders or 0) }}</div>
-    </div>
-    <div class="card">
-      <div class="label">Total GMV</div>
-      <div class="value">{{ "{:,.2f}".format(summary.total_gmv or 0) }}</div>
-    </div>
-    <div class="card">
-      <div class="label">Avg Review</div>
-      <div class="value">{{ "{:.2f}".format(summary.avg_review or 0) }}</div>
-    </div>
-  </div>
-
-  <div class="section">
-    <div class="panel full">
-      <h2>GMV & Orders by Month</h2>
-      <p>แนวโน้มยอดขายรวม (GMV) และจำนวนออเดอร์รายเดือน</p>
-      <div class="chart-wrap"><canvas id="monthlyChart"></canvas></div>
-    </div>
-
-    <div class="panel">
-      <h2>Sales by Customer State (Top 15)</h2>
-      <p>ยอดขายตามรัฐ/จังหวัด (state) ของลูกค้า</p>
-      <div class="chart-wrap"><canvas id="stateChart"></canvas></div>
-
-      <table>
-        <thead>
-          <tr><th>State</th><th>Orders</th><th>GMV</th></tr>
-        </thead>
-        <tbody>
-        {% for r in top_states %}
-          <tr>
-            <td><span class="pill">{{ r.customer_state }}</span></td>
-            <td>{{ "{:,}".format(r.orders or 0) }}</td>
-            <td>{{ "{:,.2f}".format(r.gmv or 0) }}</td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
-
-    <div class="panel">
-      <h2>Top Categories (by Revenue)</h2>
-      <p>หมวดหมู่สินค้าที่ทำรายได้สูงสุด</p>
-      <div class="chart-wrap"><canvas id="catChart"></canvas></div>
-
-      <table>
-        <thead>
-          <tr><th>Category</th><th>Items</th><th>Revenue</th></tr>
-        </thead>
-        <tbody>
-        {% for r in top_categories %}
-          <tr>
-            <td>{{ r.category }}</td>
-            <td>{{ "{:,}".format(r.items_sold or 0) }}</td>
-            <td>{{ "{:,.2f}".format(r.revenue_items or 0) }}</td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
-
-    <div class="panel">
-      <h2>Payment Mix</h2>
-      <p>สัดส่วนยอดชำระเงินรวมแยกตามประเภทการจ่าย</p>
-      <div class="chart-wrap"><canvas id="payChart"></canvas></div>
-    </div>
-
-    <div class="panel">
-      <h2>Delivery SLA</h2>
-      <p>ค่าเฉลี่ย “วันส่งช้า/เร็ว” เทียบกับวันที่คาดการณ์ (ค่าบวก = ช้า, ค่าลบ = เร็ว)</p>
-      <div class="chart-wrap"><canvas id="slaChart"></canvas></div>
-    </div>
-  </div>
-</div>
-
-<script>
-  const fmtMoney = (n) => {
-    const x = Number(n || 0);
-    return x.toLocaleString(undefined, {maximumFractionDigits: 2});
-  };
-
-  async function fetchJson(url){
-    const r = await fetch(url);
-    if(!r.ok) throw new Error(`HTTP ${r.status}`);
-    return r.json();
-  }
-
-  // 1) Monthly GMV + Orders (2 axis)
-  async function loadMonthly(){
-    const data = await fetchJson("/api/monthly");
-    const ctx = document.getElementById("monthlyChart");
-    new Chart(ctx, {
-      type: "bar",
-      data: {
-        labels: data.labels,
-        datasets: [
-          { label: "GMV", data: data.gmv, yAxisID: "y1" },
-          { label: "Orders", data: data.orders, type:"line", yAxisID: "y2" }
-        ]
-      },
-      options: {
-        responsive:true,
-        maintainAspectRatio:false,
-        interaction:{ mode:"index", intersect:false },
-        scales:{
-          y1: { position:"left", ticks:{ callback:(v)=>fmtMoney(v) } },
-          y2: { position:"right", grid:{ drawOnChartArea:false } }
-        }
-      }
-    });
-  }
-
-  // 2) Sales by State
-  async function loadState(){
-    const data = await fetchJson("/api/sales_by_state");
-    const ctx = document.getElementById("stateChart");
-    new Chart(ctx, {
-      type: "bar",
-      data: {
-        labels: data.labels,
-        datasets: [
-          { label: "GMV", data: data.gmv }
-        ]
-      },
-      options: {
-        indexAxis: "y",
-        responsive:true,
-        maintainAspectRatio:false,
-        plugins:{ legend:{ display:true } },
-        scales:{ x:{ ticks:{ callback:(v)=>fmtMoney(v) } } }
-      }
-    });
-  }
-
-  // 3) Top categories revenue
-  async function loadCategories(){
-    const data = await fetchJson("/api/top_categories");
-    const ctx = document.getElementById("catChart");
-    new Chart(ctx, {
-      type: "bar",
-      data: {
-        labels: data.labels,
-        datasets: [
-          { label: "Revenue (items)", data: data.revenue }
-        ]
-      },
-      options: {
-        responsive:true,
-        maintainAspectRatio:false,
-        scales:{ y:{ ticks:{ callback:(v)=>fmtMoney(v) } } }
-      }
-    });
-  }
-
-  // 4) Payment mix
-  async function loadPayment(){
-    const data = await fetchJson("/api/payment_mix");
-    const ctx = document.getElementById("payChart");
-    new Chart(ctx, {
-      type: "doughnut",
-      data: {
-        labels: data.labels,
-        datasets: [{ label:"Total Paid", data: data.total_paid }]
-      },
-      options: {
-        responsive:true,
-        maintainAspectRatio:false
-      }
-    });
-  }
-
-  // 5) SLA avg days late
-  async function loadSLA(){
-    const data = await fetchJson("/api/sla");
-    const ctx = document.getElementById("slaChart");
-    new Chart(ctx, {
-      type: "line",
-      data: {
-        labels: data.labels,
-        datasets: [{ label:"Avg Days Late", data: data.avg_days_late }]
-      },
-      options: {
-        responsive:true,
-        maintainAspectRatio:false
-      }
-    });
-  }
-
-  Promise.all([loadMonthly(), loadState(), loadCategories(), loadPayment(), loadSLA()])
-    .catch(err => console.error("Dashboard load error:", err));
-</script>
+  <script src="app.js"></script>
 </body>
 </html>
